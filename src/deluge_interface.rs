@@ -1,7 +1,6 @@
 #![allow(unused_variables)] // TODO remove this when no more unimplemented
 use std::{
     collections::HashMap,
-    error::Error,
     ffi::OsString,
     net::{IpAddr, Ipv4Addr},
     time::Duration,
@@ -169,7 +168,7 @@ impl DelugeInterface {
 
     pub async fn add_torrent_files(
         &self,
-        torrent_files: &[(&OsString, &str, &TorrentOptions)],
+        torrent_files: &[(OsString, String, TorrentOptions)],
     ) -> Result<(), DelugeError> {
         todo!()
     }
@@ -209,7 +208,7 @@ impl DelugeInterface {
 
     pub async fn remove_torrents(
         &self,
-        torrent_ids: &[&str],
+        torrent_ids: &[String],
         remove_data: bool,
     ) -> Result<(), DelugeError> {
         // Actually has rich error
@@ -218,12 +217,12 @@ impl DelugeInterface {
 
     pub async fn get_sessions_status(
         &self,
-        keys: &[&str],
+        keys: &[String],
     ) -> Result<HashMap<String, TorrentStatus>, DelugeError> {
         todo!()
     }
 
-    pub async fn force_reannounce(&self, torrent_ids: &[&str]) -> Result<(), DelugeError> {
+    pub async fn force_reannounce(&self, torrent_ids: &[String]) -> Result<(), DelugeError> {
         todo!()
     }
 
@@ -238,7 +237,7 @@ impl DelugeInterface {
         Ok(())
     }
 
-    pub async fn pause_torrents(&self, torrent_ids: &[&str]) -> Result<(), DelugeError> {
+    pub async fn pause_torrents(&self, torrent_ids: &[String]) -> Result<(), DelugeError> {
         log::debug!("Pausing Torrents");
         let res_json = self
             .request(Request::new(
@@ -267,7 +266,7 @@ impl DelugeInterface {
 
     pub async fn move_storage(
         &self,
-        torrent_ids: &[&str],
+        torrent_ids: &[String],
         dest: &OsString,
     ) -> Result<(), DelugeError> {
         todo!()
@@ -305,7 +304,7 @@ impl DelugeInterface {
             .await?;
         Ok(())
     }
-    pub async fn resume_torrents(&self, torrent_ids: &[&str]) -> Result<(), DelugeError> {
+    pub async fn resume_torrents(&self, torrent_ids: &[String]) -> Result<(), DelugeError> {
         log::debug!("Resuming Torrents");
         let res_json = self
             .request(Request::new(
@@ -318,7 +317,7 @@ impl DelugeInterface {
     pub async fn get_torrent_status(
         &self,
         torrent_id: &str,
-        keys: &[&str],
+        keys: &[String],
         diff: Option<bool>,
     ) -> Result<Map<String, Value>, DelugeError> {
         log::debug!("Getting torrent status");
@@ -334,7 +333,7 @@ impl DelugeInterface {
     pub async fn get_torrents_status(
         &self,
         filter_dict: &Map<String, Value>,
-        keys: &[&str],
+        keys: &[String],
         diff: Option<bool>,
     ) -> Result<Map<String, Value>, DelugeError> {
         todo!()
@@ -343,7 +342,7 @@ impl DelugeInterface {
     pub async fn get_filter_tree(
         &self,
         show_zero_hits: Option<bool>,
-        hide_cat: Option<&[&str]>,
+        hide_cat: Option<&[String]>,
     ) -> Result<Map<String, (Value, usize)>, DelugeError> {
         todo!()
     }
@@ -376,7 +375,7 @@ impl DelugeInterface {
 
     pub async fn get_config_values(
         &self,
-        keys: &[&str],
+        keys: &[String],
     ) -> Result<Map<String, Value>, DelugeError> {
         todo!()
     }
@@ -409,13 +408,13 @@ impl DelugeInterface {
         todo!()
     }
 
-    pub async fn force_recheck(&self, torrent_ids: &[&str]) -> Result<(), DelugeError> {
+    pub async fn force_recheck(&self, torrent_ids: &[String]) -> Result<(), DelugeError> {
         todo!()
     }
 
     pub async fn set_torrent_options(
         &self,
-        torrent_ids: &[&str],
+        torrent_ids: &[String],
         options: &TorrentOptions,
     ) -> Result<(), DelugeError> {
         todo!()
@@ -457,21 +456,21 @@ impl DelugeInterface {
             _ => Some(path_size.try_into()?),
         })
     }
-    pub async fn create_torrent(
-        &self,
-        path: OsString,
-        tracker: TorrentTracker,
-        piece_length: usize,
-        comment: Option<String>,
-        target: Option<OsString>,
-        webseeds: Option<Vec<String>>,
-        private: Option<bool>,
-        created_by: Option<String>,
-        trackers: Option<Vec<String>>,
-        add_to_session: bool,
-    ) -> Result<(), DelugeError> {
-        todo!()
-    }
+    // pub async fn create_torrent(
+    //     &self,
+    //     path: OsString,
+    //     tracker: TorrentTracker,
+    //     piece_length: usize,
+    //     comment: Option<String>,
+    //     target: Option<OsString>,
+    //     webseeds: Option<Vec<String>>,
+    //     private: Option<bool>,
+    //     created_by: Option<String>,
+    //     trackers: Option<Vec<String>>,
+    //     add_to_session: bool,
+    // ) -> Result<(), DelugeError> {
+    //     todo!()
+    // }
 
     pub async fn upload_plugin(
         &self,
@@ -505,19 +504,19 @@ impl DelugeInterface {
         todo!()
     }
 
-    pub async fn queue_top(&self, torrent_ids: &[&str]) -> Result<(), DelugeError> {
+    pub async fn queue_top(&self, torrent_ids: &[String]) -> Result<(), DelugeError> {
         todo!()
     }
 
-    pub async fn queue_up(&self, torrent_ids: &[&str]) -> Result<(), DelugeError> {
+    pub async fn queue_up(&self, torrent_ids: &[String]) -> Result<(), DelugeError> {
         todo!()
     }
 
-    pub async fn queue_down(&self, torrent_ids: &[&str]) -> Result<(), DelugeError> {
+    pub async fn queue_down(&self, torrent_ids: &[String]) -> Result<(), DelugeError> {
         todo!()
     }
 
-    pub async fn queue_bottom(&self, torrent_ids: &[&str]) -> Result<(), DelugeError> {
+    pub async fn queue_bottom(&self, torrent_ids: &[String]) -> Result<(), DelugeError> {
         todo!()
     }
 
