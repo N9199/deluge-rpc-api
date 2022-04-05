@@ -3,44 +3,27 @@ use std::{
     collections::HashMap,
     error::Error,
     ffi::OsString,
-    iter::Map,
     net::{IpAddr, Ipv4Addr},
     time::Duration,
 };
 
 use reqwest::{header::HeaderMap, Client, ClientBuilder, Url};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
-pub enum TorrentStatus {}
-pub struct TorrentTracker {
-    pub url: Url,
-    pub tier: usize,
-}
+use crate::{torrent_stuff::*, error::DelugeError};
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct TorrentResponse {
-    pub result: Value,
-    pub id: usize,
-    pub error: Option<String>,
-}
-pub struct TorrentOptions {}
 pub struct Account {
     pub username: String,
     pub password: String,
     pub authlevel: String,
     pub authlevel_int: usize,
 }
-type TorrentError = Box<dyn Error>;
-
 pub struct DelugeInterface {
     client: Client,
     ip: Ipv4Addr,
     port: Option<String>,
 }
-/**
-TODO Change `TorrentError` to real error type
-*/
 
 #[derive(Serialize, Deserialize, Debug)]
 struct Request {
@@ -60,11 +43,11 @@ impl Request {
 }
 
 impl DelugeInterface {
-    pub fn new(ip: Ipv4Addr, port: Option<String>) -> Result<Self, TorrentError> {
+    pub fn new(ip: Ipv4Addr, port: Option<String>) -> Result<Self, DelugeError> {
         log::debug!("Creating Headers");
         let mut headers = HeaderMap::new();
-        headers.insert("Content-Type", "application/json".parse()?);
-        headers.insert("Accept", "application/json".parse()?);
+        headers.insert("Content-Type", "application/json".parse().unwrap());
+        headers.insert("Accept", "application/json".parse().unwrap());
         log::debug!("Creating Client");
         log::debug!("ip: {}", &ip);
         log::debug!("port: {:?}", port.as_ref());
@@ -84,7 +67,7 @@ impl DelugeInterface {
         format!("http://{}{}/json", self.ip, port)
     }
 
-    async fn request(&self, request: Request) -> Result<TorrentResponse, TorrentError> {
+    async fn request(&self, request: Request) -> Result<TorrentResponse, DelugeError> {
         log::debug!("Sending Response");
         let out = self
             .client
@@ -98,7 +81,7 @@ impl DelugeInterface {
         Ok(out)
     }
 
-    pub async fn login(&self, password: String) -> Result<(), TorrentError> {
+    pub async fn login(&self, password: String) -> Result<(), DelugeError> {
         log::info!("Logging In");
         let request = Request::new("auth.login", Some(vec![json!(password)]));
         log::debug!("Login info: {:?}", &request);
@@ -107,7 +90,7 @@ impl DelugeInterface {
         Ok(())
     }
 
-    pub async fn disconnect(&self) -> Result<(), TorrentError> {
+    pub async fn disconnect(&self) -> Result<(), DelugeError> {
         log::debug!("Disconnecting");
         let request = Request::new("web.disconnect", None);
         log::debug!("{:?}", &request);
@@ -124,21 +107,39 @@ impl DelugeInterface {
         filedump: &str,
         options: &TorrentOptions,
         save_state: Option<bool>,
-    ) -> Result<Option<String>, TorrentError> {
-        unimplemented!()
+    ) -> Result<Option<String>, DelugeError> {
+        log::debug!("Adding Torrent File");
+        let params = vec![
+            json!(filename),
+            json!(filedump),
+            options.to_json(),
+            json!(save_state),
+        ];
+        let res_json = self
+            .request(Request::new("core.add_torrent_file_async", Some(params)))
+            .await?;
+        let out = match res_json.result {
+            Value::Null => None,
+            Value::String(out) => Some(out),
+            _ => {
+                return Err(DelugeError::Json);
+            }
+        };
+        Ok(out)
     }
 
     pub async fn prefetch_magnet_metadata(
         &self,
         magnet_uri: &str,
         timeout: Option<Duration>,
-    ) -> Result<(String, String), TorrentError> {
+    ) -> Result<(String, String), DelugeError> {
         log::debug!("Prefetching Magnet Metadata");
-        let request = Request::new(
-            "core.prefetch_magnet_metadata",
-            timeout.map(|x| vec![json!(x.as_secs())]),
-        );
-        let res_json = self.request(request).await?;
+        let res_json = self
+            .request(Request::new(
+                "core.prefetch_magnet_metadata",
+                timeout.map(|x| vec![json!(x.as_secs())]),
+            ))
+            .await?;
         let out = res_json
             .result
             .as_array()
@@ -153,7 +154,7 @@ impl DelugeInterface {
                 _ => None,
             })
             .flatten()
-            .ok_or("TorrentResponse JSON doesn't satisfy response schema")?; // Again, there's probably a better way to do this
+            .ok_or(DelugeError::Json)?; // Again, there's probably a better way to do this
         Ok(out)
     }
 
@@ -162,14 +163,14 @@ impl DelugeInterface {
         filename: &OsString,
         filedump: &str,
         options: &TorrentOptions,
-    ) -> Result<Option<String>, TorrentError> {
+    ) -> Result<Option<String>, DelugeError> {
         unimplemented!()
     }
 
     pub async fn add_torrent_files(
         &self,
         torrent_files: &[(&OsString, &str, &TorrentOptions)],
-    ) -> Result<(), TorrentError> {
+    ) -> Result<(), DelugeError> {
         unimplemented!()
     }
 
@@ -178,7 +179,7 @@ impl DelugeInterface {
         url: Url,
         options: &TorrentOptions,
         headers: Option<&HeaderMap>,
-    ) -> Result<Option<String>, TorrentError> {
+    ) -> Result<Option<String>, DelugeError> {
         unimplemented!()
     }
 
@@ -186,7 +187,7 @@ impl DelugeInterface {
         &self,
         uri: &str,
         options: &TorrentOptions,
-    ) -> Result<String, TorrentError> {
+    ) -> Result<String, DelugeError> {
         unimplemented!()
     }
 
@@ -194,17 +195,15 @@ impl DelugeInterface {
         &self,
         torrent_id: &str,
         remove_data: bool,
-    ) -> Result<bool, TorrentError> {
+    ) -> Result<bool, DelugeError> {
         log::debug!("Removing Torrent");
-        let request = Request::new(
-            "core.remove_torrent",
-            Some(vec![json!(torrent_id), json!(remove_data)]),
-        );
-        let res_json = self.request(request).await?;
-        let out = res_json
-            .result
-            .as_bool()
-            .ok_or("TorrentResponse JSON doesn't satisfy response schema")?;
+        let res_json = self
+            .request(Request::new(
+                "core.remove_torrent",
+                Some(vec![json!(torrent_id), json!(remove_data)]),
+            ))
+            .await?;
+        let out = res_json.result.as_bool().ok_or(DelugeError::Json)?;
         Ok(out)
     }
 
@@ -212,7 +211,7 @@ impl DelugeInterface {
         &self,
         torrent_ids: &[&str],
         remove_data: bool,
-    ) -> Result<(), TorrentError> {
+    ) -> Result<(), DelugeError> {
         // Actually has rich error
         unimplemented!()
     }
@@ -220,28 +219,33 @@ impl DelugeInterface {
     pub async fn get_sessions_status(
         &self,
         keys: &[&str],
-    ) -> Result<HashMap<String, TorrentStatus>, TorrentError> {
+    ) -> Result<HashMap<String, TorrentStatus>, DelugeError> {
         unimplemented!()
     }
 
-    pub async fn force_reannounce(&self, torrent_ids: &[&str]) -> Result<(), TorrentError> {
+    pub async fn force_reannounce(&self, torrent_ids: &[&str]) -> Result<(), DelugeError> {
         unimplemented!()
     }
 
-    pub async fn pause_torrent(&self, torrent_id: &str) -> Result<(), TorrentError> {
+    pub async fn pause_torrent(&self, torrent_id: &str) -> Result<(), DelugeError> {
         log::debug!("Pausing Torrent");
-        let request = Request::new("core.pause_torrent", Some(vec![json!(torrent_id)]));
-        let res_json = self.request(request).await?;
+        let res_json = self
+            .request(Request::new(
+                "core.pause_torrent",
+                Some(vec![json!(torrent_id)]),
+            ))
+            .await?;
         Ok(())
     }
 
-    pub async fn pause_torrents(&self, torrent_ids: &[&str]) -> Result<(), TorrentError> {
+    pub async fn pause_torrents(&self, torrent_ids: &[&str]) -> Result<(), DelugeError> {
         log::debug!("Pausing Torrents");
-        let request = Request::new(
-            "core.pause_torrents",
-            Some(torrent_ids.iter().map(|x| json!(x)).collect()),
-        );
-        let res_json = self.request(request).await?;
+        let res_json = self
+            .request(Request::new(
+                "core.pause_torrents",
+                Some(torrent_ids.iter().map(|x| json!(x)).collect()),
+            ))
+            .await?;
         Ok(())
     }
 
@@ -250,49 +254,89 @@ impl DelugeInterface {
         torrent_id: &str,
         ip: Ipv4Addr,
         port: u16,
-    ) -> Result<(), TorrentError> {
-        unimplemented!()
+    ) -> Result<(), DelugeError> {
+        log::debug!("Connecting to Peer");
+        let res_json = self
+            .request(Request::new(
+                "core.connect_peer",
+                Some(vec![json!(ip.to_string()), json!(port)]),
+            ))
+            .await?;
+        Ok(())
     }
 
     pub async fn move_storage(
         &self,
         torrent_ids: &[&str],
         dest: &OsString,
-    ) -> Result<(), TorrentError> {
+    ) -> Result<(), DelugeError> {
         unimplemented!()
     }
 
-    pub async fn pause_session(&self) -> Result<(), TorrentError> {
-        let request = Request::new("core.pause_session", None);
-        let res_json = self.request(request).await?;
+    pub async fn pause_session(&self) -> Result<(), DelugeError> {
+        log::debug!("Pausing Session");
+        let res_json = self
+            .request(Request::new("core.pause_session", None))
+            .await?;
         Ok(())
     }
-    pub async fn resume_session(&self) -> Result<(), TorrentError> {
-        unimplemented!()
+    pub async fn resume_session(&self) -> Result<(), DelugeError> {
+        log::debug!("Resuming Session");
+        let res_json = self
+            .request(Request::new("core.resume_session", None))
+            .await?;
+        Ok(())
     }
-    pub async fn is_session_paused(&self) -> Result<bool, TorrentError> {
-        unimplemented!()
+    pub async fn is_session_paused(&self) -> Result<bool, DelugeError> {
+        log::debug!("Checking if session is paused");
+        let res_json = self
+            .request(Request::new("core.is_session_paused", None))
+            .await?;
+        let out = res_json.result.as_bool().ok_or(DelugeError::Json)?;
+        Ok(out)
     }
-    pub async fn resume_torrent(&self, torrent_id: &str) -> Result<(), TorrentError> {
-        unimplemented!()
+    pub async fn resume_torrent(&self, torrent_id: &str) -> Result<(), DelugeError> {
+        log::debug!("Resume Torrent");
+        let res_json = self
+            .request(Request::new(
+                "core.resume_torrent",
+                Some(vec![json!(torrent_id)]),
+            ))
+            .await?;
+        Ok(())
     }
-    pub async fn resume_torrents(&self, torrent_ids: &[&str]) -> Result<(), TorrentError> {
-        unimplemented!()
+    pub async fn resume_torrents(&self, torrent_ids: &[&str]) -> Result<(), DelugeError> {
+        log::debug!("Resuming Torrents");
+        let res_json = self
+            .request(Request::new(
+                "core.resume_torrents",
+                Some(torrent_ids.iter().map(|x| json!(x)).collect()),
+            ))
+            .await?;
+        Ok(())
     }
     pub async fn get_torrent_status(
         &self,
         torrent_id: &str,
         keys: &[&str],
         diff: Option<bool>,
-    ) -> Result<Map<String, Value>, TorrentError> {
-        unimplemented!()
+    ) -> Result<Map<String, Value>, DelugeError> {
+        log::debug!("Getting torrent status");
+        let mut params = vec![json!(torrent_id)];
+        params.extend(keys.iter().map(|x| json!(x)));
+        params.push(json!(diff));
+        let res_json = self
+            .request(Request::new("core.get_torrent_status", Some(params)))
+            .await?;
+        let out = res_json.result.as_object().ok_or(DelugeError::Json)?.to_owned();
+        Ok(out)
     }
     pub async fn get_torrents_status(
         &self,
         filter_dict: &Map<String, Value>,
         keys: &[&str],
         diff: Option<bool>,
-    ) -> Result<Map<String, Value>, TorrentError> {
+    ) -> Result<Map<String, Value>, DelugeError> {
         unimplemented!()
     }
 
@@ -300,17 +344,16 @@ impl DelugeInterface {
         &self,
         show_zero_hits: Option<bool>,
         hide_cat: Option<&[&str]>,
-    ) -> Result<Map<String, (Value, usize)>, TorrentError> {
+    ) -> Result<Map<String, (Value, usize)>, DelugeError> {
         unimplemented!()
     }
 
-    pub async fn get_session_state(&self) -> Result<Vec<String>, TorrentError> {
+    pub async fn get_session_state(&self) -> Result<Vec<String>, DelugeError> {
         log::info!("Getting session state");
 
-        let request = Request::new("core.get_session_state", None);
-        log::debug!("{:?}", &request);
-        let res_json = self.request(request).await?;
-        log::debug!("{:?}", &res_json);
+        let res_json = self
+            .request(Request::new("core.get_session_state", None))
+            .await?;
 
         let out = res_json
             .result
@@ -323,50 +366,50 @@ impl DelugeInterface {
         Ok(out)
     }
 
-    pub async fn get_config(&self) -> Result<Map<String, Value>, TorrentError> {
+    pub async fn get_config(&self) -> Result<Map<String, Value>, DelugeError> {
         unimplemented!()
     }
 
-    pub async fn get_config_value(&self, key: &str) -> Result<Value, TorrentError> {
+    pub async fn get_config_value(&self, key: &str) -> Result<Value, DelugeError> {
         unimplemented!()
     }
 
     pub async fn get_config_values(
         &self,
         keys: &[&str],
-    ) -> Result<Map<String, Value>, TorrentError> {
+    ) -> Result<Map<String, Value>, DelugeError> {
         unimplemented!()
     }
 
-    pub async fn set_config(&self, config: &Map<String, Value>) -> Result<(), TorrentError> {
+    pub async fn set_config(&self, config: &Map<String, Value>) -> Result<(), DelugeError> {
         unimplemented!()
     }
 
-    pub async fn get_listen_port(&self) -> Result<u16, TorrentError> {
+    pub async fn get_listen_port(&self) -> Result<u16, DelugeError> {
         unimplemented!()
     }
 
-    pub async fn get_proxy(&self) -> Result<Map<String, Value>, TorrentError> {
+    pub async fn get_proxy(&self) -> Result<Map<String, Value>, DelugeError> {
         unimplemented!()
     }
 
-    pub async fn get_available_plugins(&self) -> Result<Vec<String>, TorrentError> {
+    pub async fn get_available_plugins(&self) -> Result<Vec<String>, DelugeError> {
         unimplemented!()
     }
 
-    pub async fn get_enabled_plugins(&self) -> Result<Vec<String>, TorrentError> {
+    pub async fn get_enabled_plugins(&self) -> Result<Vec<String>, DelugeError> {
         unimplemented!()
     }
 
-    pub async fn enable_plugin(&self, plugin: &str) -> Result<bool, TorrentError> {
+    pub async fn enable_plugin(&self, plugin: &str) -> Result<bool, DelugeError> {
         unimplemented!()
     }
 
-    pub async fn disable_plugin(&self, plugin: &str) -> Result<bool, TorrentError> {
+    pub async fn disable_plugin(&self, plugin: &str) -> Result<bool, DelugeError> {
         unimplemented!()
     }
 
-    pub async fn force_recheck(&self, torrent_ids: &[&str]) -> Result<(), TorrentError> {
+    pub async fn force_recheck(&self, torrent_ids: &[&str]) -> Result<(), DelugeError> {
         unimplemented!()
     }
 
@@ -374,7 +417,7 @@ impl DelugeInterface {
         &self,
         torrent_ids: &[&str],
         options: &TorrentOptions,
-    ) -> Result<(), TorrentError> {
+    ) -> Result<(), DelugeError> {
         unimplemented!()
     }
 
@@ -382,31 +425,33 @@ impl DelugeInterface {
         &self,
         torrent_id: &str,
         trackers: &TorrentTracker,
-    ) -> Result<(), TorrentError> {
+    ) -> Result<(), DelugeError> {
         unimplemented!()
     }
 
-    pub async fn get_magnet_uri(&self, torrent_id: &str) -> Result<String, TorrentError> {
+    pub async fn get_magnet_uri(&self, torrent_id: &str) -> Result<String, DelugeError> {
         log::debug!("Getting Magnet Uri of {}", torrent_id);
-        let request = Request::new("core.get_magnet_uri", Some(vec![json!(torrent_id)]));
-        let res_json = self.request(request).await?;
+        let res_json = self
+            .request(Request::new(
+                "core.get_magnet_uri",
+                Some(vec![json!(torrent_id)]),
+            ))
+            .await?;
         let magnet_uri = res_json
             .result
             .as_str()
             .map(|x| x.to_owned())
-            .ok_or("TorrentResponse JSON doesn't satisfy response schema")?;
+            .ok_or(DelugeError::Json)?;
         log::debug!("{}", &magnet_uri);
         Ok(magnet_uri)
     }
 
-    pub async fn get_path_size(&self) -> Result<Option<usize>, TorrentError> {
+    pub async fn get_path_size(&self) -> Result<Option<usize>, DelugeError> {
         log::debug!("Getting Path Size");
-        let request = Request::new("core.get_path_size", None);
-        let res_json = self.request(request).await?;
-        let path_size = res_json
-            .result
-            .as_i64()
-            .ok_or("TorrentResponse JSON doesn't satisfy response schema")?;
+        let res_json = self
+            .request(Request::new("core.get_path_size", None))
+            .await?;
+        let path_size = res_json.result.as_i64().ok_or(DelugeError::Json)?;
         Ok(match path_size {
             -1 => None,
             _ => Some(path_size.try_into()?),
@@ -424,7 +469,7 @@ impl DelugeInterface {
         created_by: Option<String>,
         trackers: Option<Vec<String>>,
         add_to_session: bool,
-    ) -> Result<(), TorrentError> {
+    ) -> Result<(), DelugeError> {
         unimplemented!()
     }
 
@@ -432,14 +477,15 @@ impl DelugeInterface {
         &self,
         filename: OsString,
         filedump: &[u8],
-    ) -> Result<(), TorrentError> {
+    ) -> Result<(), DelugeError> {
         unimplemented!()
     }
 
-    pub async fn rescan_plugins(&self) -> Result<(), TorrentError> {
+    pub async fn rescan_plugins(&self) -> Result<(), DelugeError> {
         log::debug!("Rescanning Plugins");
-        let request = Request::new("core.rescan_plugins", None);
-        let res_json = self.request(request).await?;
+        let res_json = self
+            .request(Request::new("core.rescan_plugins", None))
+            .await?;
         Ok(())
     }
 
@@ -447,7 +493,7 @@ impl DelugeInterface {
         &self,
         torrent_id: &str,
         filenames: &[(usize, OsString)],
-    ) -> Result<(), TorrentError> {
+    ) -> Result<(), DelugeError> {
         unimplemented!()
     }
     pub async fn rename_folder(
@@ -455,74 +501,72 @@ impl DelugeInterface {
         torrent_id: &str,
         folder: OsString,
         new_folder: OsString,
-    ) -> Result<(), TorrentError> {
+    ) -> Result<(), DelugeError> {
         unimplemented!()
     }
 
-    pub async fn queue_top(&self, torrent_ids: &[&str]) -> Result<(), TorrentError> {
+    pub async fn queue_top(&self, torrent_ids: &[&str]) -> Result<(), DelugeError> {
         unimplemented!()
     }
 
-    pub async fn queue_up(&self, torrent_ids: &[&str]) -> Result<(), TorrentError> {
+    pub async fn queue_up(&self, torrent_ids: &[&str]) -> Result<(), DelugeError> {
         unimplemented!()
     }
 
-    pub async fn queue_down(&self, torrent_ids: &[&str]) -> Result<(), TorrentError> {
+    pub async fn queue_down(&self, torrent_ids: &[&str]) -> Result<(), DelugeError> {
         unimplemented!()
     }
 
-    pub async fn queue_bottom(&self, torrent_ids: &[&str]) -> Result<(), TorrentError> {
+    pub async fn queue_bottom(&self, torrent_ids: &[&str]) -> Result<(), DelugeError> {
         unimplemented!()
     }
 
-    pub async fn glob(&self, path: OsString) -> Result<Vec<String>, TorrentError> {
+    pub async fn glob(&self, path: OsString) -> Result<Vec<String>, DelugeError> {
         unimplemented!()
     }
 
-    pub async fn test_listen_port(&self) -> Result<bool, TorrentError> {
+    pub async fn test_listen_port(&self) -> Result<bool, DelugeError> {
         log::debug!("Test Listen Port");
-        let request = Request::new("core.test_listen_port", None);
-        let res_json = self.request(request).await?;
-        let out = res_json
-            .result
-            .as_bool()
-            .ok_or("TorrentResponse JSON doesn't satisfy response schema")?;
+        let res_json = self
+            .request(Request::new("core.test_listen_port", None))
+            .await?;
+        let out = res_json.result.as_bool().ok_or(DelugeError::Json)?;
         Ok(out)
     }
 
-    pub async fn get_free_space(&self, path: Option<OsString>) -> Result<usize, TorrentError> {
+    pub async fn get_free_space(&self, path: Option<OsString>) -> Result<usize, DelugeError> {
         unimplemented!()
     }
 
-    pub async fn external_ip(&self) -> Result<IpAddr, TorrentError> {
+    pub async fn external_ip(&self) -> Result<IpAddr, DelugeError> {
         unimplemented!()
     }
 
-    pub async fn get_libtorrent_version(&self) -> Result<String, TorrentError> {
+    pub async fn get_libtorrent_version(&self) -> Result<String, DelugeError> {
         unimplemented!()
     }
 
     pub async fn get_completion_paths(
         &self,
         args: &Map<String, Value>,
-    ) -> Result<Map<String, Value>, TorrentError> {
+    ) -> Result<Map<String, Value>, DelugeError> {
         unimplemented!()
     }
-    pub async fn get_known_accounts(&self) -> Result<Vec<Account>, TorrentError> {
+    pub async fn get_known_accounts(&self) -> Result<Vec<Account>, DelugeError> {
         unimplemented!()
     }
     pub async fn get_auth_levels_mappings(
         &self,
-    ) -> Result<(Map<String, usize>, Map<usize, String>), TorrentError> {
+    ) -> Result<(Map<String, usize>, Map<usize, String>), DelugeError> {
         unimplemented!()
     }
-    pub async fn create_account(&self, account: Account) -> Result<bool, TorrentError> {
+    pub async fn create_account(&self, account: Account) -> Result<bool, DelugeError> {
         unimplemented!()
     }
-    pub async fn update_account(&self, account: Account) -> Result<bool, TorrentError> {
+    pub async fn update_account(&self, account: Account) -> Result<bool, DelugeError> {
         unimplemented!()
     }
-    pub async fn remove_account(&self, username: &str) -> Result<bool, TorrentError> {
+    pub async fn remove_account(&self, username: &str) -> Result<bool, DelugeError> {
         unimplemented!()
     }
 
