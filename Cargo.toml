@@ -6,8 +6,8 @@ authors = ["N9199 <N9199@users.noreply.github.com>"]
 documentation = "https://docs.rs/deluge-rpc-api"
 repository = "https://github.com/N9199/deluge-rpc-api"
 readme = "README.md"
-# description =
-# license =
+description = "A Rust API for Deluge"
+license = "AGPL-3.0-or-later"
 exclude = [
     ".github/"
 ]
