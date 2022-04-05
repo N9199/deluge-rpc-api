@@ -164,14 +164,14 @@ impl DelugeInterface {
         filedump: &str,
         options: &TorrentOptions,
     ) -> Result<Option<String>, DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn add_torrent_files(
         &self,
         torrent_files: &[(&OsString, &str, &TorrentOptions)],
     ) -> Result<(), DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn add_torrent_url(
@@ -180,7 +180,7 @@ impl DelugeInterface {
         options: &TorrentOptions,
         headers: Option<&HeaderMap>,
     ) -> Result<Option<String>, DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn add_torrent_magnet(
@@ -188,7 +188,7 @@ impl DelugeInterface {
         uri: &str,
         options: &TorrentOptions,
     ) -> Result<String, DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn remove_torrent(
@@ -213,18 +213,18 @@ impl DelugeInterface {
         remove_data: bool,
     ) -> Result<(), DelugeError> {
         // Actually has rich error
-        unimplemented!()
+        todo!()
     }
 
     pub async fn get_sessions_status(
         &self,
         keys: &[&str],
     ) -> Result<HashMap<String, TorrentStatus>, DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn force_reannounce(&self, torrent_ids: &[&str]) -> Result<(), DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn pause_torrent(&self, torrent_id: &str) -> Result<(), DelugeError> {
@@ -270,7 +270,7 @@ impl DelugeInterface {
         torrent_ids: &[&str],
         dest: &OsString,
     ) -> Result<(), DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn pause_session(&self) -> Result<(), DelugeError> {
@@ -337,7 +337,7 @@ impl DelugeInterface {
         keys: &[&str],
         diff: Option<bool>,
     ) -> Result<Map<String, Value>, DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn get_filter_tree(
@@ -345,7 +345,7 @@ impl DelugeInterface {
         show_zero_hits: Option<bool>,
         hide_cat: Option<&[&str]>,
     ) -> Result<Map<String, (Value, usize)>, DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn get_session_state(&self) -> Result<Vec<String>, DelugeError> {
@@ -367,50 +367,50 @@ impl DelugeInterface {
     }
 
     pub async fn get_config(&self) -> Result<Map<String, Value>, DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn get_config_value(&self, key: &str) -> Result<Value, DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn get_config_values(
         &self,
         keys: &[&str],
     ) -> Result<Map<String, Value>, DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn set_config(&self, config: &Map<String, Value>) -> Result<(), DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn get_listen_port(&self) -> Result<u16, DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn get_proxy(&self) -> Result<Map<String, Value>, DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn get_available_plugins(&self) -> Result<Vec<String>, DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn get_enabled_plugins(&self) -> Result<Vec<String>, DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn enable_plugin(&self, plugin: &str) -> Result<bool, DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn disable_plugin(&self, plugin: &str) -> Result<bool, DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn force_recheck(&self, torrent_ids: &[&str]) -> Result<(), DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn set_torrent_options(
@@ -418,7 +418,7 @@ impl DelugeInterface {
         torrent_ids: &[&str],
         options: &TorrentOptions,
     ) -> Result<(), DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn set_torrent_trackers(
@@ -426,7 +426,7 @@ impl DelugeInterface {
         torrent_id: &str,
         trackers: &TorrentTracker,
     ) -> Result<(), DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn get_magnet_uri(&self, torrent_id: &str) -> Result<String, DelugeError> {
@@ -470,7 +470,7 @@ impl DelugeInterface {
         trackers: Option<Vec<String>>,
         add_to_session: bool,
     ) -> Result<(), DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn upload_plugin(
@@ -478,7 +478,7 @@ impl DelugeInterface {
         filename: OsString,
         filedump: &[u8],
     ) -> Result<(), DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn rescan_plugins(&self) -> Result<(), DelugeError> {
@@ -494,7 +494,7 @@ impl DelugeInterface {
         torrent_id: &str,
         filenames: &[(usize, OsString)],
     ) -> Result<(), DelugeError> {
-        unimplemented!()
+        todo!()
     }
     pub async fn rename_folder(
         &self,
@@ -502,27 +502,27 @@ impl DelugeInterface {
         folder: OsString,
         new_folder: OsString,
     ) -> Result<(), DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn queue_top(&self, torrent_ids: &[&str]) -> Result<(), DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn queue_up(&self, torrent_ids: &[&str]) -> Result<(), DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn queue_down(&self, torrent_ids: &[&str]) -> Result<(), DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn queue_bottom(&self, torrent_ids: &[&str]) -> Result<(), DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn glob(&self, path: OsString) -> Result<Vec<String>, DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn test_listen_port(&self) -> Result<bool, DelugeError> {
@@ -535,60 +535,60 @@ impl DelugeInterface {
     }
 
     pub async fn get_free_space(&self, path: Option<OsString>) -> Result<usize, DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn external_ip(&self) -> Result<IpAddr, DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn get_libtorrent_version(&self) -> Result<String, DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     pub async fn get_completion_paths(
         &self,
         args: &Map<String, Value>,
     ) -> Result<Map<String, Value>, DelugeError> {
-        unimplemented!()
+        todo!()
     }
     pub async fn get_known_accounts(&self) -> Result<Vec<Account>, DelugeError> {
-        unimplemented!()
+        todo!()
     }
     pub async fn get_auth_levels_mappings(
         &self,
     ) -> Result<(Map<String, usize>, Map<usize, String>), DelugeError> {
-        unimplemented!()
+        todo!()
     }
     pub async fn create_account(&self, account: Account) -> Result<bool, DelugeError> {
-        unimplemented!()
+        todo!()
     }
     pub async fn update_account(&self, account: Account) -> Result<bool, DelugeError> {
-        unimplemented!()
+        todo!()
     }
     pub async fn remove_account(&self, username: &str) -> Result<bool, DelugeError> {
-        unimplemented!()
+        todo!()
     }
 
     // ! End of Core
 
     // ! Start of Daemon
-    // pub async fn shutdown(&self){unimplemented!()}
-    // pub async fn get_method_list(&self){unimplemented!()}
-    // pub async fn get_version(&self){unimplemented!()}
+    // pub async fn shutdown(&self){todo!()}
+    // pub async fn get_method_list(&self){todo!()}
+    // pub async fn get_version(&self){todo!()}
     // pub async fn authorized_call(&self, rpc)
     // ! End of Daemon
     // ! Start of Web
-    // pub async fn change_password(&self, old_password, new_password){unimplemented!()}
-    // pub async fn check_session(&self, session_id=None){unimplemented!()}
-    // pub async fn delete_session(&self){unimplemented!()}
-    // pub async fn login(&self, password){unimplemented!()}
-    // pub async fn connect(&self, host_id){unimplemented!()}
-    // pub async fn connected(&self){unimplemented!()}
-    // pub async fn disconnect(&self){unimplemented!()}
-    // pub async fn update_ui(&self, keys, filter_dict){unimplemented!()}
-    // pub async fn get_torrent_files(&self, torrent_id){unimplemented!()}
-    // pub async fn download_torrent_from_url(&self, url, cookie=None){unimplemented!()}
-    // pub async fn get_torrent_info(&self, filename){unimplemented!()}
-    // pub async fn get_magnet_info(&self, uri){unimplemented!()}
+    // pub async fn change_password(&self, old_password, new_password){todo!()}
+    // pub async fn check_session(&self, session_id=None){todo!()}
+    // pub async fn delete_session(&self){todo!()}
+    // pub async fn login(&self, password){todo!()}
+    // pub async fn connect(&self, host_id){todo!()}
+    // pub async fn connected(&self){todo!()}
+    // pub async fn disconnect(&self){todo!()}
+    // pub async fn update_ui(&self, keys, filter_dict){todo!()}
+    // pub async fn get_torrent_files(&self, torrent_id){todo!()}
+    // pub async fn download_torrent_from_url(&self, url, cookie=None){todo!()}
+    // pub async fn get_torrent_info(&self, filename){todo!()}
+    // pub async fn get_magnet_info(&self, uri){todo!()}
 }
