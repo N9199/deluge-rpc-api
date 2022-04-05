@@ -208,20 +208,3 @@ impl TorrentOption {
         }
     }
 }
-
-#[cfg(test)]
-mod test {
-    use super::TorrentOption;
-
-    #[test]
-    fn test1() {
-        assert_eq!(
-            TorrentOption::SuperSeeding(true).to_string(),
-            "super_seeding"
-        );
-        assert_eq!(
-            TorrentOption::FilePriorities(Vec::new()).to_string(),
-            "file_priorities"
-        );
-    }
-}
