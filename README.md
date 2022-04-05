@@ -14,3 +14,4 @@
     -[ ] Web
     -[ ] Others <!-- Add public stuff not in list-->
 -[ ] Finish README <!-- Yes this one -->
+-[ ] Add LICENSE!!!
