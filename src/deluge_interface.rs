@@ -1,7 +1,6 @@
 #![allow(unused_variables)] // TODO remove this when no more unimplemented
 use std::{
     collections::HashMap,
-    ffi::OsString,
     net::{IpAddr, Ipv4Addr},
     time::Duration,
 };
@@ -10,8 +9,12 @@ use reqwest::{header::HeaderMap, Client, ClientBuilder, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-use crate::{torrent_stuff::*, error::DelugeError};
+use crate::{
+    error::{DelugeApiError, DelugeError},
+    torrent_stuff::*,
+};
 
+type OsString = String; // ! Should just be OsString to enforce correct rules, but serialization of this is a pain
 pub struct Account {
     pub username: String,
     pub password: String,
@@ -42,14 +45,12 @@ impl Request {
 }
 
 impl DelugeInterface {
-    pub fn new(ip: Ipv4Addr, port: Option<String>) -> Result<Self, DelugeError> {
+    pub fn new(ip: Ipv4Addr, port: Option<String>) -> Result<Self, DelugeApiError> {
         log::debug!("Creating Headers");
         let mut headers = HeaderMap::new();
         headers.insert("Content-Type", "application/json".parse().unwrap());
         headers.insert("Accept", "application/json".parse().unwrap());
-        log::debug!("Creating Client");
-        log::debug!("ip: {}", &ip);
-        log::debug!("port: {:?}", port.as_ref());
+        log::debug!("Creating Client {{ ip: {}, port: {:?}}}", &ip, port.as_ref());
         let client = ClientBuilder::new()
             .default_headers(headers)
             .gzip(true)
@@ -66,8 +67,9 @@ impl DelugeInterface {
         format!("http://{}{}/json", self.ip, port)
     }
 
-    async fn request(&self, request: Request) -> Result<TorrentResponse, DelugeError> {
-        log::debug!("Sending Response");
+    async fn request(&self, request: Request) -> Result<TorrentResponse, DelugeApiError> {
+        log::debug!("Sending Request");
+        log::debug!("{:?}", &request);
         let out = self
             .client
             .post(&self.url())
@@ -77,24 +79,21 @@ impl DelugeInterface {
             .json()
             .await?;
         log::debug!("Got Response");
+        log::debug!("{}", &out);
         Ok(out)
     }
 
-    pub async fn login(&self, password: String) -> Result<(), DelugeError> {
-        log::info!("Logging In");
+    pub async fn login(&self, password: String) -> Result<(), DelugeApiError> {
+        log::debug!("Logging In");
         let request = Request::new("auth.login", Some(vec![json!(password)]));
-        log::debug!("Login info: {:?}", &request);
         let res_json = self.request(request).await?;
-        log::debug!("Login response: {:?}", &res_json);
         Ok(())
     }
 
-    pub async fn disconnect(&self) -> Result<(), DelugeError> {
+    pub async fn disconnect(&self) -> Result<(), DelugeApiError> {
         log::debug!("Disconnecting");
         let request = Request::new("web.disconnect", None);
-        log::debug!("{:?}", &request);
         let res_json = self.request(request).await?;
-        log::debug!("{:?}", &res_json);
         Ok(())
     }
 
@@ -106,7 +105,7 @@ impl DelugeInterface {
         filedump: &str,
         options: &TorrentOptions,
         save_state: Option<bool>,
-    ) -> Result<Option<String>, DelugeError> {
+    ) -> Result<Option<String>, DelugeApiError> {
         log::debug!("Adding Torrent File");
         let params = vec![
             json!(filename),
@@ -121,7 +120,7 @@ impl DelugeInterface {
             Value::Null => None,
             Value::String(out) => Some(out),
             _ => {
-                return Err(DelugeError::Json);
+                return Err(DelugeApiError::Json);
             }
         };
         Ok(out)
@@ -131,7 +130,7 @@ impl DelugeInterface {
         &self,
         magnet_uri: &str,
         timeout: Option<Duration>,
-    ) -> Result<(String, String), DelugeError> {
+    ) -> Result<(String, String), DelugeApiError> {
         log::debug!("Prefetching Magnet Metadata");
         let res_json = self
             .request(Request::new(
@@ -148,12 +147,11 @@ impl DelugeInterface {
                     .map(|x| Some(x.to_owned()))
                     .collect::<Vec<_>>()
             })
-            .map(|mut x| match x.len() {
+            .and_then(|mut x| match x.len() {
                 2 => Some((x[0].take().unwrap(), x[1].take().unwrap())),
                 _ => None,
             })
-            .flatten()
-            .ok_or(DelugeError::Json)?; // Again, there's probably a better way to do this
+            .ok_or(DelugeApiError::Json)?; // Again, there's probably a better way to do this
         Ok(out)
     }
 
@@ -162,14 +160,14 @@ impl DelugeInterface {
         filename: &OsString,
         filedump: &str,
         options: &TorrentOptions,
-    ) -> Result<Option<String>, DelugeError> {
+    ) -> Result<Option<String>, DelugeApiError> {
         todo!()
     }
 
     pub async fn add_torrent_files(
         &self,
         torrent_files: &[(OsString, String, TorrentOptions)],
-    ) -> Result<(), DelugeError> {
+    ) -> Result<(), DelugeApiError> {
         todo!()
     }
 
@@ -178,7 +176,7 @@ impl DelugeInterface {
         url: Url,
         options: &TorrentOptions,
         headers: Option<&HeaderMap>,
-    ) -> Result<Option<String>, DelugeError> {
+    ) -> Result<Option<String>, DelugeApiError> {
         todo!()
     }
 
@@ -186,15 +184,35 @@ impl DelugeInterface {
         &self,
         uri: &str,
         options: &TorrentOptions,
-    ) -> Result<String, DelugeError> {
-        todo!()
+    ) -> Result<String, DelugeApiError> {
+        log::debug!("Adding Torrent from magnet");
+        let res_json = self
+            .request(Request::new(
+                "core.add_torrent_magnet",
+                Some(vec![json!(uri), options.to_json()]),
+            ))
+            .await?;
+        let out = res_json
+            .result
+            .as_str()
+            .ok_or(if let Some(error) = res_json.error {
+                DelugeApiError::Deluge(error.message.parse().unwrap())
+            } else {
+                DelugeApiError::Json
+            });
+        let out = if let Err(DelugeApiError::Deluge(DelugeError::DuplicateTorrent(id))) = out {
+            id
+        } else {
+            out?.to_string()
+        };
+        Ok(out)
     }
 
     pub async fn remove_torrent(
         &self,
         torrent_id: &str,
         remove_data: bool,
-    ) -> Result<bool, DelugeError> {
+    ) -> Result<bool, DelugeApiError> {
         log::debug!("Removing Torrent");
         let res_json = self
             .request(Request::new(
@@ -202,7 +220,7 @@ impl DelugeInterface {
                 Some(vec![json!(torrent_id), json!(remove_data)]),
             ))
             .await?;
-        let out = res_json.result.as_bool().ok_or(DelugeError::Json)?;
+        let out = res_json.result.as_bool().ok_or(DelugeApiError::Json)?;
         Ok(out)
     }
 
@@ -210,7 +228,7 @@ impl DelugeInterface {
         &self,
         torrent_ids: &[String],
         remove_data: bool,
-    ) -> Result<(), DelugeError> {
+    ) -> Result<(), DelugeApiError> {
         // Actually has rich error
         todo!()
     }
@@ -218,15 +236,15 @@ impl DelugeInterface {
     pub async fn get_sessions_status(
         &self,
         keys: &[String],
-    ) -> Result<HashMap<String, TorrentStatus>, DelugeError> {
+    ) -> Result<HashMap<String, TorrentStatus>, DelugeApiError> {
         todo!()
     }
 
-    pub async fn force_reannounce(&self, torrent_ids: &[String]) -> Result<(), DelugeError> {
+    pub async fn force_reannounce(&self, torrent_ids: &[String]) -> Result<(), DelugeApiError> {
         todo!()
     }
 
-    pub async fn pause_torrent(&self, torrent_id: &str) -> Result<(), DelugeError> {
+    pub async fn pause_torrent(&self, torrent_id: &str) -> Result<(), DelugeApiError> {
         log::debug!("Pausing Torrent");
         let res_json = self
             .request(Request::new(
@@ -237,7 +255,7 @@ impl DelugeInterface {
         Ok(())
     }
 
-    pub async fn pause_torrents(&self, torrent_ids: &[String]) -> Result<(), DelugeError> {
+    pub async fn pause_torrents(&self, torrent_ids: &[String]) -> Result<(), DelugeApiError> {
         log::debug!("Pausing Torrents");
         let res_json = self
             .request(Request::new(
@@ -253,7 +271,7 @@ impl DelugeInterface {
         torrent_id: &str,
         ip: Ipv4Addr,
         port: u16,
-    ) -> Result<(), DelugeError> {
+    ) -> Result<(), DelugeApiError> {
         log::debug!("Connecting to Peer");
         let res_json = self
             .request(Request::new(
@@ -268,33 +286,33 @@ impl DelugeInterface {
         &self,
         torrent_ids: &[String],
         dest: &OsString,
-    ) -> Result<(), DelugeError> {
+    ) -> Result<(), DelugeApiError> {
         todo!()
     }
 
-    pub async fn pause_session(&self) -> Result<(), DelugeError> {
+    pub async fn pause_session(&self) -> Result<(), DelugeApiError> {
         log::debug!("Pausing Session");
         let res_json = self
             .request(Request::new("core.pause_session", None))
             .await?;
         Ok(())
     }
-    pub async fn resume_session(&self) -> Result<(), DelugeError> {
+    pub async fn resume_session(&self) -> Result<(), DelugeApiError> {
         log::debug!("Resuming Session");
         let res_json = self
             .request(Request::new("core.resume_session", None))
             .await?;
         Ok(())
     }
-    pub async fn is_session_paused(&self) -> Result<bool, DelugeError> {
+    pub async fn is_session_paused(&self) -> Result<bool, DelugeApiError> {
         log::debug!("Checking if session is paused");
         let res_json = self
             .request(Request::new("core.is_session_paused", None))
             .await?;
-        let out = res_json.result.as_bool().ok_or(DelugeError::Json)?;
+        let out = res_json.result.as_bool().ok_or(DelugeApiError::Json)?;
         Ok(out)
     }
-    pub async fn resume_torrent(&self, torrent_id: &str) -> Result<(), DelugeError> {
+    pub async fn resume_torrent(&self, torrent_id: &str) -> Result<(), DelugeApiError> {
         log::debug!("Resume Torrent");
         let res_json = self
             .request(Request::new(
@@ -304,7 +322,7 @@ impl DelugeInterface {
             .await?;
         Ok(())
     }
-    pub async fn resume_torrents(&self, torrent_ids: &[String]) -> Result<(), DelugeError> {
+    pub async fn resume_torrents(&self, torrent_ids: &[String]) -> Result<(), DelugeApiError> {
         log::debug!("Resuming Torrents");
         let res_json = self
             .request(Request::new(
@@ -319,7 +337,7 @@ impl DelugeInterface {
         torrent_id: &str,
         keys: &[String],
         diff: Option<bool>,
-    ) -> Result<Map<String, Value>, DelugeError> {
+    ) -> Result<Map<String, Value>, DelugeApiError> {
         log::debug!("Getting torrent status");
         let mut params = vec![json!(torrent_id)];
         params.extend(keys.iter().map(|x| json!(x)));
@@ -327,7 +345,11 @@ impl DelugeInterface {
         let res_json = self
             .request(Request::new("core.get_torrent_status", Some(params)))
             .await?;
-        let out = res_json.result.as_object().ok_or(DelugeError::Json)?.to_owned();
+        let out = res_json
+            .result
+            .as_object()
+            .ok_or(DelugeApiError::Json)?
+            .to_owned();
         Ok(out)
     }
     pub async fn get_torrents_status(
@@ -335,7 +357,7 @@ impl DelugeInterface {
         filter_dict: &Map<String, Value>,
         keys: &[String],
         diff: Option<bool>,
-    ) -> Result<Map<String, Value>, DelugeError> {
+    ) -> Result<Map<String, Value>, DelugeApiError> {
         todo!()
     }
 
@@ -343,12 +365,12 @@ impl DelugeInterface {
         &self,
         show_zero_hits: Option<bool>,
         hide_cat: Option<&[String]>,
-    ) -> Result<Map<String, (Value, usize)>, DelugeError> {
+    ) -> Result<Map<String, (Value, usize)>, DelugeApiError> {
         todo!()
     }
 
-    pub async fn get_session_state(&self) -> Result<Vec<String>, DelugeError> {
-        log::info!("Getting session state");
+    pub async fn get_session_state(&self) -> Result<Vec<String>, DelugeApiError> {
+        log::debug!("Getting session state");
 
         let res_json = self
             .request(Request::new("core.get_session_state", None))
@@ -365,50 +387,50 @@ impl DelugeInterface {
         Ok(out)
     }
 
-    pub async fn get_config(&self) -> Result<Map<String, Value>, DelugeError> {
+    pub async fn get_config(&self) -> Result<Map<String, Value>, DelugeApiError> {
         todo!()
     }
 
-    pub async fn get_config_value(&self, key: &str) -> Result<Value, DelugeError> {
+    pub async fn get_config_value(&self, key: &str) -> Result<Value, DelugeApiError> {
         todo!()
     }
 
     pub async fn get_config_values(
         &self,
         keys: &[String],
-    ) -> Result<Map<String, Value>, DelugeError> {
+    ) -> Result<Map<String, Value>, DelugeApiError> {
         todo!()
     }
 
-    pub async fn set_config(&self, config: &Map<String, Value>) -> Result<(), DelugeError> {
+    pub async fn set_config(&self, config: &Map<String, Value>) -> Result<(), DelugeApiError> {
         todo!()
     }
 
-    pub async fn get_listen_port(&self) -> Result<u16, DelugeError> {
+    pub async fn get_listen_port(&self) -> Result<u16, DelugeApiError> {
         todo!()
     }
 
-    pub async fn get_proxy(&self) -> Result<Map<String, Value>, DelugeError> {
+    pub async fn get_proxy(&self) -> Result<Map<String, Value>, DelugeApiError> {
         todo!()
     }
 
-    pub async fn get_available_plugins(&self) -> Result<Vec<String>, DelugeError> {
+    pub async fn get_available_plugins(&self) -> Result<Vec<String>, DelugeApiError> {
         todo!()
     }
 
-    pub async fn get_enabled_plugins(&self) -> Result<Vec<String>, DelugeError> {
+    pub async fn get_enabled_plugins(&self) -> Result<Vec<String>, DelugeApiError> {
         todo!()
     }
 
-    pub async fn enable_plugin(&self, plugin: &str) -> Result<bool, DelugeError> {
+    pub async fn enable_plugin(&self, plugin: &str) -> Result<bool, DelugeApiError> {
         todo!()
     }
 
-    pub async fn disable_plugin(&self, plugin: &str) -> Result<bool, DelugeError> {
+    pub async fn disable_plugin(&self, plugin: &str) -> Result<bool, DelugeApiError> {
         todo!()
     }
 
-    pub async fn force_recheck(&self, torrent_ids: &[String]) -> Result<(), DelugeError> {
+    pub async fn force_recheck(&self, torrent_ids: &[String]) -> Result<(), DelugeApiError> {
         todo!()
     }
 
@@ -416,7 +438,7 @@ impl DelugeInterface {
         &self,
         torrent_ids: &[String],
         options: &TorrentOptions,
-    ) -> Result<(), DelugeError> {
+    ) -> Result<(), DelugeApiError> {
         todo!()
     }
 
@@ -424,11 +446,11 @@ impl DelugeInterface {
         &self,
         torrent_id: &str,
         trackers: &TorrentTracker,
-    ) -> Result<(), DelugeError> {
+    ) -> Result<(), DelugeApiError> {
         todo!()
     }
 
-    pub async fn get_magnet_uri(&self, torrent_id: &str) -> Result<String, DelugeError> {
+    pub async fn get_magnet_uri(&self, torrent_id: &str) -> Result<String, DelugeApiError> {
         log::debug!("Getting Magnet Uri of {}", torrent_id);
         let res_json = self
             .request(Request::new(
@@ -440,17 +462,17 @@ impl DelugeInterface {
             .result
             .as_str()
             .map(|x| x.to_owned())
-            .ok_or(DelugeError::Json)?;
+            .ok_or(DelugeApiError::Json)?;
         log::debug!("{}", &magnet_uri);
         Ok(magnet_uri)
     }
 
-    pub async fn get_path_size(&self) -> Result<Option<usize>, DelugeError> {
+    pub async fn get_path_size(&self) -> Result<Option<usize>, DelugeApiError> {
         log::debug!("Getting Path Size");
         let res_json = self
             .request(Request::new("core.get_path_size", None))
             .await?;
-        let path_size = res_json.result.as_i64().ok_or(DelugeError::Json)?;
+        let path_size = res_json.result.as_i64().ok_or(DelugeApiError::Json)?;
         Ok(match path_size {
             -1 => None,
             _ => Some(path_size.try_into()?),
@@ -476,11 +498,11 @@ impl DelugeInterface {
         &self,
         filename: OsString,
         filedump: &[u8],
-    ) -> Result<(), DelugeError> {
+    ) -> Result<(), DelugeApiError> {
         todo!()
     }
 
-    pub async fn rescan_plugins(&self) -> Result<(), DelugeError> {
+    pub async fn rescan_plugins(&self) -> Result<(), DelugeApiError> {
         log::debug!("Rescanning Plugins");
         let res_json = self
             .request(Request::new("core.rescan_plugins", None))
@@ -492,7 +514,7 @@ impl DelugeInterface {
         &self,
         torrent_id: &str,
         filenames: &[(usize, OsString)],
-    ) -> Result<(), DelugeError> {
+    ) -> Result<(), DelugeApiError> {
         todo!()
     }
     pub async fn rename_folder(
@@ -500,72 +522,72 @@ impl DelugeInterface {
         torrent_id: &str,
         folder: OsString,
         new_folder: OsString,
-    ) -> Result<(), DelugeError> {
+    ) -> Result<(), DelugeApiError> {
         todo!()
     }
 
-    pub async fn queue_top(&self, torrent_ids: &[String]) -> Result<(), DelugeError> {
+    pub async fn queue_top(&self, torrent_ids: &[String]) -> Result<(), DelugeApiError> {
         todo!()
     }
 
-    pub async fn queue_up(&self, torrent_ids: &[String]) -> Result<(), DelugeError> {
+    pub async fn queue_up(&self, torrent_ids: &[String]) -> Result<(), DelugeApiError> {
         todo!()
     }
 
-    pub async fn queue_down(&self, torrent_ids: &[String]) -> Result<(), DelugeError> {
+    pub async fn queue_down(&self, torrent_ids: &[String]) -> Result<(), DelugeApiError> {
         todo!()
     }
 
-    pub async fn queue_bottom(&self, torrent_ids: &[String]) -> Result<(), DelugeError> {
+    pub async fn queue_bottom(&self, torrent_ids: &[String]) -> Result<(), DelugeApiError> {
         todo!()
     }
 
-    pub async fn glob(&self, path: OsString) -> Result<Vec<String>, DelugeError> {
+    pub async fn glob(&self, path: OsString) -> Result<Vec<String>, DelugeApiError> {
         todo!()
     }
 
-    pub async fn test_listen_port(&self) -> Result<bool, DelugeError> {
+    pub async fn test_listen_port(&self) -> Result<bool, DelugeApiError> {
         log::debug!("Test Listen Port");
         let res_json = self
             .request(Request::new("core.test_listen_port", None))
             .await?;
-        let out = res_json.result.as_bool().ok_or(DelugeError::Json)?;
+        let out = res_json.result.as_bool().ok_or(DelugeApiError::Json)?;
         Ok(out)
     }
 
-    pub async fn get_free_space(&self, path: Option<OsString>) -> Result<usize, DelugeError> {
+    pub async fn get_free_space(&self, path: Option<OsString>) -> Result<usize, DelugeApiError> {
         todo!()
     }
 
-    pub async fn external_ip(&self) -> Result<IpAddr, DelugeError> {
+    pub async fn external_ip(&self) -> Result<IpAddr, DelugeApiError> {
         todo!()
     }
 
-    pub async fn get_libtorrent_version(&self) -> Result<String, DelugeError> {
+    pub async fn get_libtorrent_version(&self) -> Result<String, DelugeApiError> {
         todo!()
     }
 
     pub async fn get_completion_paths(
         &self,
         args: &Map<String, Value>,
-    ) -> Result<Map<String, Value>, DelugeError> {
+    ) -> Result<Map<String, Value>, DelugeApiError> {
         todo!()
     }
-    pub async fn get_known_accounts(&self) -> Result<Vec<Account>, DelugeError> {
+    pub async fn get_known_accounts(&self) -> Result<Vec<Account>, DelugeApiError> {
         todo!()
     }
     pub async fn get_auth_levels_mappings(
         &self,
-    ) -> Result<(Map<String, usize>, Map<usize, String>), DelugeError> {
+    ) -> Result<(Map<String, usize>, Map<usize, String>), DelugeApiError> {
         todo!()
     }
-    pub async fn create_account(&self, account: Account) -> Result<bool, DelugeError> {
+    pub async fn create_account(&self, account: Account) -> Result<bool, DelugeApiError> {
         todo!()
     }
-    pub async fn update_account(&self, account: Account) -> Result<bool, DelugeError> {
+    pub async fn update_account(&self, account: Account) -> Result<bool, DelugeApiError> {
         todo!()
     }
-    pub async fn remove_account(&self, username: &str) -> Result<bool, DelugeError> {
+    pub async fn remove_account(&self, username: &str) -> Result<bool, DelugeApiError> {
         todo!()
     }
 
@@ -574,7 +596,19 @@ impl DelugeInterface {
     // ! Start of Daemon
     // pub async fn shutdown(&self){todo!()}
     // pub async fn get_method_list(&self){todo!()}
-    // pub async fn get_version(&self){todo!()}
+    pub async fn get_version(&self) -> Result<String, DelugeApiError> {
+        log::debug!("Getting Version");
+        let res_json = self
+            .request(Request::new("daemon.get_version", None))
+            .await?;
+
+        let out = res_json
+            .result
+            .as_str()
+            .ok_or(DelugeApiError::Json)?
+            .to_string();
+        Ok(out)
+    }
     // pub async fn authorized_call(&self, rpc)
     // ! End of Daemon
     // ! Start of Web
