@@ -4,16 +4,22 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use thiserror::Error;
 
+use crate::{torrent_stuff::ErrorValue, utils::Never};
+
 #[derive(Error, Debug)]
 pub enum DelugeApiError {
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
     #[error("TorrentResponse JSON doesn't satisfy response schema")]
     Json,
+    #[error("Incorrectly empty result")]
+    EmptyResult,
     #[error(transparent)]
     Deluge(#[from] DelugeError),
     #[error(transparent)]
     TryInto(#[from] std::num::TryFromIntError),
+    #[error("Header values are not ASCII complaint")]
+    IncorrectHeaderFormat,
 }
 
 #[derive(Error, Debug)]
@@ -25,8 +31,13 @@ pub enum DelugeError {
     Other(String),
 }
 
+impl From<ErrorValue> for DelugeError{
+    fn from(e: ErrorValue) -> Self {
+        e.message.parse().unwrap()
+    }
+}
 impl FromStr for DelugeError {
-    type Err = ();
+    type Err = Never; // Replace with never type when stable
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         lazy_static! {
