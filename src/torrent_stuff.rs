@@ -206,7 +206,7 @@ pub struct Host {
 mod test {
     use std::error::Error;
 
-    use crate::torrent_stuff::{temp, Host};
+    use crate::torrent_stuff::Host;
 
     #[test]
     fn test1() -> Result<(), Box<dyn Error>> {
@@ -220,6 +220,4 @@ mod test {
         assert_eq!(json.username, "4");
         Ok(())
     }
-
 }
-
