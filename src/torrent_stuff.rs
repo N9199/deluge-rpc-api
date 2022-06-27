@@ -5,11 +5,10 @@ use reqwest::Url;
 use serde::{ser::SerializeStruct, Deserialize, Serialize};
 
 mod torrent_options;
+use serde_json::{json, Value};
 pub use torrent_options::*;
 
-use crate::error::{DelugeApiError, DelugeError};
-#[derive(Debug, Deserialize, Serialize)]
-pub enum TorrentStatus {} // TODO fill up see https://www.libtorrent.org/reference-Torrent_Status.html#torrent_status
+use crate::DelugeApiError;
 
 #[derive(Debug)]
 pub struct TorrentTracker {
@@ -38,11 +37,16 @@ pub(crate) struct TorrentResponse<V> {
 
 impl<V> TorrentResponse<V> {
     pub(crate) fn into_result(self) -> Result<V, DelugeApiError> {
-        if let Some(err) = self.error {
-            Err(err.message.parse::<DelugeError>().unwrap().into())
-        } else {
-            self.result.ok_or(DelugeApiError::EmptyResult)
-        }
+        self.error.map_or_else(
+            || self.result.ok_or(DelugeApiError::EmptyResult),
+            |err| Err(err.message.into()),
+        )
+    }
+    pub(crate) fn get_ref_result(&self) -> Result<&V, DelugeApiError> {
+        self.error.as_ref().map_or_else(
+            || self.result.as_ref().ok_or(DelugeApiError::EmptyResult),
+            |err| Err(err.message.clone().into()),
+        ) //Should look into maybe doing some stuff to make this clone unnecessary
     }
 }
 
@@ -64,12 +68,10 @@ where
     V: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let (value_type, value) = match &self.error {
-            Some(error) => (
-                "error",
-                error.message.parse::<DelugeError>().unwrap().to_string(),
-            ),
-            None => ("result", format!("{:?}", self.result)),
+        let res = self.get_ref_result();
+        let (value_type, value) = match res {
+            Ok(v) => ("result", format!("{v:?}")),
+            Err(e) => ("error", e.to_string()),
         };
         write!(f, "TorrentResponse {{ {value_type}: {value} }}")
     }
@@ -94,7 +96,10 @@ pub struct TorrentBuilder {
 }
 
 impl TorrentBuilder {
-    pub fn new(path: Utf8PathBuf, tracker: TorrentTracker, piece_length: usize) -> Self {
+    // //! Make const when const_precise_live_drops reaches stable
+    #[allow(clippy::missing_const_for_fn)]
+    #[must_use]
+    pub const fn new(path: Utf8PathBuf, tracker: TorrentTracker, piece_length: usize) -> Self {
         Self {
             path,
             tracker,
@@ -108,32 +113,35 @@ impl TorrentBuilder {
         }
     }
 
-    pub fn with_comment(mut self, comment: String) -> Self {
+    pub fn with_comment(&mut self, comment: String) -> &mut Self {
         self.comment = comment.into();
         self
     }
-    pub fn with_target(mut self, target: Utf8PathBuf) -> Self {
+    pub fn with_target(&mut self, target: Utf8PathBuf) -> &mut Self {
         self.target = target.into();
         self
     }
-    pub fn with_webseeds(mut self, webseeds: Vec<String>) -> Self {
+    pub fn with_webseeds(&mut self, webseeds: Vec<String>) -> &mut Self {
         self.webseeds = webseeds.into();
         self
     }
-    pub fn with_author(mut self, author: String) -> Self {
+    pub fn with_author(&mut self, author: String) -> &mut Self {
         self.created_by = author.into();
         self
     }
-    pub fn with_trackers(mut self, trackers: Vec<String>) -> Self {
+    pub fn with_trackers(&mut self, trackers: Vec<String>) -> &mut Self {
         self.trackers = trackers.into();
         self
     }
 
-    pub fn private(mut self, enable: bool) -> Self {
+    pub fn private(&mut self, enable: bool) -> &mut Self {
         self.private = enable.into();
         self
     }
 
+    // //! Make const when const_precise_live_drops reaches stable
+    #[allow(clippy::missing_const_for_fn)]
+    #[must_use]
     pub fn build(self) -> Torrent {
         Torrent {
             path: self.path,
@@ -149,7 +157,7 @@ impl TorrentBuilder {
     }
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Debug)]
 pub struct Torrent {
     path: Utf8PathBuf,
     tracker: TorrentTracker,
@@ -161,3 +169,57 @@ pub struct Torrent {
     created_by: Option<String>,
     trackers: Option<Vec<String>>,
 }
+
+impl Torrent {
+    pub(crate) fn into_list(self) -> Vec<Value> {
+        vec![
+            json!(self.path),
+            json!(self.tracker),
+            json!(self.piece_length),
+            json!(self.comment),
+            json!(self.target),
+            json!(self.webseeds),
+            json!(self.private),
+            json!(self.created_by),
+            json!(self.trackers),
+        ]
+    }
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Account {
+    pub username: String,
+    pub password: String,
+    pub authlevel: String,
+    pub authlevel_int: Option<usize>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Host {
+    pub host_id: String,
+    pub hostname: String,
+    pub port: usize,
+    pub username: String,
+}
+
+#[cfg(test)]
+mod test {
+    use std::error::Error;
+
+    use crate::torrent_stuff::{temp, Host};
+
+    #[test]
+    fn test1() -> Result<(), Box<dyn Error>> {
+        let json = r#"["1","2",3,"4"]"#;
+        eprintln!("{}", &json);
+        let json: Host = serde_json::from_str(json)?;
+        eprintln!("{:?}", &json);
+        assert_eq!(json.host_id, "1");
+        assert_eq!(json.hostname, "2");
+        assert_eq!(json.port, 3);
+        assert_eq!(json.username, "4");
+        Ok(())
+    }
+
+}
+

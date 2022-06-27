@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
+use camino::Utf8PathBuf;
 use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::enum_map::{EnumMap, SerializableEnum};
 
-type Utf8PathBuf = String; // ! Should just be Utf8PathBuf to enforce correct rules, but serialization of this is a pain, will solve later
-
+// Every value **must** fit in 7bits, as it's cast as an i8.
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[repr(u8)]
 pub enum TorrentPriorities {
@@ -22,6 +22,7 @@ impl Serialize for TorrentPriorities {
     where
         S: serde::Serializer,
     {
+        #[allow(clippy::cast_possible_wrap)]
         serializer.serialize_i8((*self as u8) as i8)
     }
 }
@@ -105,6 +106,7 @@ impl SerializableEnum for TorrentOption {
 
 #[cfg(test)]
 mod test {
+    use camino::Utf8PathBuf;
     use serde_json::json;
 
     use super::{TorrentOption, TorrentOptions};
@@ -114,7 +116,7 @@ mod test {
         let mut options = TorrentOptions::new();
         options.insert(TorrentOption::MaxConnections(32));
         options.insert(TorrentOption::MaxConnections(31));
-        options.insert(TorrentOption::MoveCompletedPath("path".to_string()));
+        options.insert(TorrentOption::MoveCompletedPath(Utf8PathBuf::from("path")));
 
         assert_eq!(
             r#"{"max_connections":31,"move_completed_path":"path"}"#,

@@ -37,7 +37,7 @@ where
         S: serde::Serializer,
     {
         let mut map = serializer.serialize_map(Some(self.len()))?;
-        for item in self.into_iter() {
+        for item in self {
             let k = item.get_key();
             let v = item.get_value();
             map.serialize_entry(&k, &v)?;
@@ -59,8 +59,20 @@ impl<E> EnumMap<E> {
         self.0.take(&item.into()).map(|x| x.0)
     }
 
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.0.len()
+    }
+
+    pub fn iter(&self) -> Iter<E> {
+        self.into_iter()
+    }
+}
+
+impl<E> Extend<E> for EnumMap<E> {
+    fn extend<T: IntoIterator<Item = E>>(&mut self, iter: T) {
+        iter.into_iter().for_each(|e| {
+            self.insert(e);
+        });
     }
 }
 
@@ -73,10 +85,12 @@ impl<E> Default for EnumMap<E> {
 struct EnumWrapper<E>(E);
 
 impl<E> EnumWrapper<E> {
+    // //! Make const when const_precise_live_drops reaches stable
+    #[allow(clippy::missing_const_for_fn)]
     pub fn into_internal(self) -> E {
         self.0
     }
-    pub fn get_ref(&self) -> &E {
+    pub const fn get(&self) -> &E {
         &self.0
     }
 }
@@ -112,7 +126,7 @@ impl<E> Iterator for IntoIter<E> {
     type Item = E;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.0.next().map(|x| x.into_internal())
+        self.0.next().map(EnumWrapper::into_internal)
     }
 }
 
@@ -127,7 +141,7 @@ impl<'a, E> Iterator for Iter<'a, E> {
     type Item = &'a E;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.0.next().map(|x| x.get_ref())
+        self.0.next().map(EnumWrapper::get)
     }
 }
 

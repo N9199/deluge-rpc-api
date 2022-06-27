@@ -8,19 +8,13 @@ use std::{
 
 use camino::{Utf8Path, Utf8PathBuf};
 use reqwest::{header::HeaderMap, Client, ClientBuilder, Url};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{json, Value};
 
 use crate::{
-    error::{DelugeApiError, DelugeError},
-    torrent_stuff::*,
+    torrent_stuff::{Account, Host, Torrent, TorrentOptions, TorrentResponse, TorrentTracker},
+    DelugeApiError, DelugeError,
 };
-pub struct Account {
-    pub username: String,
-    pub password: String,
-    pub authlevel: String,
-    pub authlevel_int: usize,
-}
 
 #[derive(Debug)]
 pub struct DelugeInterface {
@@ -37,18 +31,18 @@ struct RequestBuilder<'a> {
 }
 
 impl<'a> RequestBuilder<'a> {
-    fn add_params<T>(&mut self, params: &[T]) -> &mut Self
-    where
-        T: Serialize,
-    {
-        self.params.extend(params.iter().map(|v| json!(v)));
-        self
-    }
     fn add_param<T>(&mut self, param: &T) -> &mut Self
     where
         T: Serialize,
     {
         self.params.push(json!(param));
+        self
+    }
+    fn add_params<T>(&mut self, params: &[T]) -> &mut Self
+    where
+        T: Serialize,
+    {
+        self.params.extend(params.iter().map(|param| json!(param)));
         self
     }
 
@@ -77,7 +71,7 @@ impl<'a> RequestBuilder<'a> {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Debug)]
 struct Request {
     method: String,
     params: Vec<Value>,
@@ -88,8 +82,13 @@ impl DelugeInterface {
     pub fn new(ip: Ipv4Addr, port: Option<String>) -> Result<Self, DelugeApiError> {
         log::debug!("Creating Headers");
         let mut headers = HeaderMap::new();
-        headers.insert("Content-Type", "application/json".parse().unwrap());
-        headers.insert("Accept", "application/json".parse().unwrap());
+        unsafe {
+            headers.insert(
+                "Content-Type",
+                "application/json".parse().unwrap_unchecked(),
+            );
+            headers.insert("Accept", "application/json".parse().unwrap_unchecked());
+        }
         log::debug!(
             "Creating Client {{ ip: {}, port: {:?}}}",
             &ip,
@@ -117,23 +116,6 @@ impl DelugeInterface {
             method: method.to_string(),
             params: Vec::new(),
         }
-    }
-
-    pub async fn login(&self, password: String) -> Result<(), DelugeApiError> {
-        log::debug!("Logging In");
-        self.request("auth.login")
-            .add_param(&password)
-            .send()
-            .await?
-            .into_empty_result()
-    }
-
-    pub async fn disconnect(&self) -> Result<(), DelugeApiError> {
-        log::debug!("Disconnecting");
-        self.request("web.disconnect")
-            .send()
-            .await?
-            .into_empty_result()
     }
 
     // ! Start of Core
@@ -177,7 +159,7 @@ impl DelugeInterface {
         options: &TorrentOptions,
     ) -> Result<Option<String>, DelugeApiError> {
         log::debug!("Adding Torrent File");
-        self.request("core.add_torrent_file_async")
+        self.request("core.add_torrent_file")
             .add_param(&filename)
             .add_param(&filedump)
             .add_param(options)
@@ -264,19 +246,19 @@ impl DelugeInterface {
         todo!("Needs rich error process on into_result")
     }
 
-    pub async fn get_sessions_status(
-        &self,
-        keys: &[String],
-    ) -> Result<HashMap<String, TorrentStatus>, DelugeApiError> {
-        self.request("core.get_sessions_status")
-            .add_param(&keys)
-            .send()
-            .await?
-            .into_result()
-    }
+    // pub async fn get_session_status(
+    //     &self,
+    //     keys: &[String],
+    // ) -> Result<HashMap<String,  >, DelugeApiError> { // String to int? or float?
+    //     self.request("core.get_session_status")
+    //         .add_param(&keys)
+    //         .send()
+    //         .await?
+    //         .into_result() todo!()
+    // }
 
     pub async fn force_reannounce(&self, torrent_ids: &[String]) -> Result<(), DelugeApiError> {
-        self.request("core.get_sessions_status")
+        self.request("core.force_reannounce")
             .add_param(&torrent_ids)
             .send()
             .await?
@@ -336,6 +318,7 @@ impl DelugeInterface {
             .await?
             .into_empty_result()
     }
+
     pub async fn resume_session(&self) -> Result<(), DelugeApiError> {
         log::debug!("Resuming Session");
         self.request("core.resume_session")
@@ -343,6 +326,7 @@ impl DelugeInterface {
             .await?
             .into_empty_result()
     }
+
     pub async fn is_session_paused(&self) -> Result<bool, DelugeApiError> {
         log::debug!("Checking if session is paused");
         self.request("core.is_session_paused")
@@ -350,6 +334,7 @@ impl DelugeInterface {
             .await?
             .into_result()
     }
+
     pub async fn resume_torrent(&self, torrent_id: &str) -> Result<(), DelugeApiError> {
         log::debug!("Resume Torrent");
         self.request("core.resume_torrent")
@@ -358,6 +343,7 @@ impl DelugeInterface {
             .await?
             .into_empty_result()
     }
+
     pub async fn resume_torrents(&self, torrent_ids: &[String]) -> Result<(), DelugeApiError> {
         log::debug!("Resuming Torrents");
         self.request("core.resume_torrents")
@@ -366,6 +352,7 @@ impl DelugeInterface {
             .await?
             .into_empty_result()
     }
+
     pub async fn get_torrent_status(
         &self,
         torrent_id: &str,
@@ -380,6 +367,7 @@ impl DelugeInterface {
         }
         builder.send().await?.into_result()
     }
+
     pub async fn get_torrents_status(
         &self,
         filter_dict: &HashMap<String, Value>,
@@ -398,7 +386,7 @@ impl DelugeInterface {
         &self,
         show_zero_hits: Option<bool>,
         hide_cat: Option<&[String]>,
-    ) -> Result<HashMap<String, (Value, usize)>, DelugeApiError> {
+    ) -> Result<HashMap<String, Vec<(String, usize)>>, DelugeApiError> {
         let mut builder = self.request("core.get_filter_tree");
         if let Some(hide_cat) = hide_cat {
             if let Some(szh) = show_zero_hits {
@@ -447,7 +435,11 @@ impl DelugeInterface {
     }
 
     pub async fn set_config(&self, config: &HashMap<String, Value>) -> Result<(), DelugeApiError> {
-        todo!()
+        self.request("core.set_config")
+            .add_param(config)
+            .send()
+            .await?
+            .into_empty_result()
     }
 
     pub async fn get_listen_port(&self) -> Result<u16, DelugeApiError> {
@@ -546,12 +538,18 @@ impl DelugeInterface {
             _ => Some(path_size.try_into()?),
         })
     }
+
     pub async fn create_torrent(
         &self,
         torrent: Torrent,
         add_to_session: bool,
-    ) -> Result<(), DelugeError> {
-        todo!()
+    ) -> Result<(), DelugeApiError> {
+        self.request("core.create_torrent")
+            .add_params(&torrent.into_list())
+            .add_param(&add_to_session)
+            .send()
+            .await?
+            .into_empty_result()
     }
 
     pub async fn upload_plugin(
@@ -587,6 +585,7 @@ impl DelugeInterface {
             .await?
             .into_empty_result()
     }
+
     pub async fn rename_folder(
         &self,
         torrent_id: &str,
@@ -651,7 +650,11 @@ impl DelugeInterface {
     }
 
     pub async fn get_free_space(&self, path: Option<Utf8PathBuf>) -> Result<usize, DelugeApiError> {
-        todo!()
+        let mut builder = self.request("core.get_free_space");
+        if let Some(path) = path {
+            builder.add_param(&path);
+        }
+        builder.send().await?.into_result()
     }
 
     pub async fn external_ip(&self) -> Result<IpAddr, DelugeApiError> {
@@ -671,20 +674,47 @@ impl DelugeInterface {
     ) -> Result<HashMap<String, Value>, DelugeApiError> {
         todo!()
     }
+
+    /// Needs admin authority level
     pub async fn get_known_accounts(&self) -> Result<Vec<Account>, DelugeApiError> {
-        todo!()
+        self.request("core.get_known_accounts")
+            .send()
+            .await?
+            .into_result()
     }
+
     pub async fn get_auth_levels_mappings(
         &self,
     ) -> Result<(HashMap<String, usize>, HashMap<usize, String>), DelugeApiError> {
-        todo!()
+        self.request("core.get_known_accounts")
+            .send()
+            .await?
+            .into_result()
     }
+
+    /// Needs admin authority level
     pub async fn create_account(&self, account: Account) -> Result<bool, DelugeApiError> {
-        todo!()
+        self.request("core.create_account")
+            .add_param(&account.username)
+            .add_param(&account.password)
+            .add_param(&account.authlevel)
+            .send()
+            .await?
+            .into_result()
     }
+
+    /// Needs admin authority level
     pub async fn update_account(&self, account: Account) -> Result<bool, DelugeApiError> {
-        todo!()
+        self.request("core.update_account")
+            .add_param(&account.username)
+            .add_param(&account.password)
+            .add_param(&account.authlevel)
+            .send()
+            .await?
+            .into_result()
     }
+
+    /// Needs admin authority level
     pub async fn remove_account(&self, username: &str) -> Result<bool, DelugeApiError> {
         self.request("core.remove_account")
             .add_param(&username)
@@ -696,8 +726,14 @@ impl DelugeInterface {
     // ! End of Core
 
     // ! Start of Daemon
-    // pub async fn shutdown(&self){todo!()}
-    // pub async fn get_method_list(&self){todo!()}
+    pub async fn shutdown(&self) -> Result<(), DelugeApiError> {
+        todo!()
+    }
+
+    pub async fn get_method_list(&self) -> Result<(), DelugeApiError> {
+        todo!()
+    }
+
     pub async fn get_version(&self) -> Result<String, DelugeApiError> {
         log::debug!("Getting Version");
         self.request("daemon.get_version")
@@ -707,17 +743,88 @@ impl DelugeInterface {
     }
     // pub async fn authorized_call(&self, rpc)
     // ! End of Daemon
+    // ! Start of Auth
+    pub async fn change_password(
+        &self,
+        old_password: String,
+        new_password: String,
+    ) -> Result<bool, DelugeApiError> {
+        self.request("auth.change_password")
+            .add_param(&old_password)
+            .add_param(&new_password)
+            .send()
+            .await?
+            .into_result()
+    }
+    pub async fn check_session(&self) -> Result<bool, DelugeApiError> {
+        self.request("auth.check_session")
+            .send()
+            .await?
+            .into_result()
+    }
+    pub async fn delete_session(&self) -> Result<bool, DelugeApiError> {
+        self.request("auth.delete_session")
+            .send()
+            .await?
+            .into_result()
+    }
+
+    pub async fn login(&self, password: String) -> Result<bool, DelugeApiError> {
+        log::debug!("Logging In");
+        self.request("auth.login")
+            .add_param(&password)
+            .send()
+            .await?
+            .into_result()
+    }
+    // ! End of Auth
     // ! Start of Web
-    // pub async fn change_password(&self, old_password, new_password){todo!()}
-    // pub async fn check_session(&self, session_id=None){todo!()}
-    // pub async fn delete_session(&self){todo!()}
-    // pub async fn login(&self, password){todo!()}
-    // pub async fn connect(&self, host_id){todo!()}
-    // pub async fn connected(&self){todo!()}
-    // pub async fn disconnect(&self){todo!()}
-    // pub async fn update_ui(&self, keys, filter_dict){todo!()}
-    // pub async fn get_torrent_files(&self, torrent_id){todo!()}
-    // pub async fn download_torrent_from_url(&self, url, cookie=None){todo!()}
-    // pub async fn get_torrent_info(&self, filename){todo!()}
-    // pub async fn get_magnet_info(&self, uri){todo!()}
+    pub async fn connect(&self, host_id: &str) -> Result<Vec<String>, DelugeApiError> {
+        self.request("web.connect")
+            .add_param(&host_id)
+            .send()
+            .await?
+            .into_result()
+    }
+    pub async fn connected(&self) -> Result<(), DelugeApiError> {
+        self.request("web.connected")
+            .send()
+            .await?
+            .into_empty_result()
+    }
+
+    pub async fn disconnect(&self) -> Result<(), DelugeApiError> {
+        log::debug!("Disconnecting");
+        self.request("web.disconnect")
+            .send()
+            .await?
+            .into_empty_result()
+    }
+    // pub async fn update_ui(&self, keys, filter_dict)->Result<_,DelugeApiError>{todo!()}
+    // pub async fn get_torrent_status(&self, torrent_id, keys)->Result<_,DelugeApiError>{todo!()}
+    // pub async fn get_torrent_files(&self, torrent_id)->Result<_,DelugeApiError>{todo!()}
+    // pub async fn download_torrent_from_url(&self, url, cookie=None)->Result<_,DelugeApiError>{todo!()}
+    // pub async fn get_torrent_info(&self, filename)->Result<_,DelugeApiError>{todo!()}
+    // pub async fn get_magnet_info(&self, uri: Uri)->Result<_,DelugeApiError>{todo!()}
+    // pub async fn add_torrents(&self, torrents)->Result<_,DelugeApiError>{todo!()}
+
+    pub async fn get_hosts(&self) -> Result<Vec<Host>, DelugeApiError> {
+        self.request("web.get_hosts").send().await?.into_result()
+    }
+    // pub async fn get_host_status(&self, host_id)->Result<_,DelugeApiError>{todo!()}
+    // pub async fn add_host(&self, host, port, username='', password='')->Result<_,DelugeApiError>{todo!()}
+    // pub async fn edit_host(&self, host_id, host, port, username='', password='')->Result<_,DelugeApiError>{todo!()}
+    // pub async fn remove_host(&self, host_id)->Result<_,DelugeApiError>{todo!()}
+    // pub async fn start_daemon(&self, port)->Result<_,DelugeApiError>{todo!()}
+    // pub async fn stop_daemon(&self, host_id)->Result<_,DelugeApiError>{todo!()}
+    // pub async fn get_config(&self)->Result<_,DelugeApiError>{todo!()}
+    // pub async fn set_config(&self, config)->Result<_,DelugeApiError>{todo!()}
+    // pub async fn get_plugins(&self)->Result<_,DelugeApiError>{todo!()}
+    // pub async fn get_plugin_info(&self, name)->Result<_,DelugeApiError>{todo!()}
+    // pub async fn get_plugin_resources(&self, name)->Result<_,DelugeApiError>{todo!()}
+    // pub async fn upload_plugin(&self, filename, path)->Result<_,DelugeApiError>{todo!()}
+    // pub async fn register_event_listener(&self, event)->Result<_,DelugeApiError>{todo!()}
+    // pub async fn deregister_event_listener(&self, event)->Result<_,DelugeApiError>{todo!()}
+    // pub async fn get_events(&self)->Result<_,DelugeApiError>{todo!()}
+    // pub async fn get_languages(&self)->Result<_,DelugeApiError>{todo!()}
 }
